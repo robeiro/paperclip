@@ -20,6 +20,7 @@ module Paperclip
         :hash_digest           => "SHA1",
         :interpolator          => Paperclip::Interpolations,
         :only_process          => [],
+        :original_style        => :original,
         :path                  => ":rails_root/public:url",
         :preserve_files        => false,
         :processors            => [:thumbnail],
@@ -35,7 +36,7 @@ module Paperclip
       }
     end
 
-    attr_reader :name, :instance, :default_style, :convert_options, :queued_for_write, :whiny,
+    attr_reader :name, :instance, :default_style, :original_style, :convert_options, :queued_for_write, :whiny,
                 :options, :interpolator, :source_file_options, :whiny
     attr_accessor :post_processing
 
@@ -51,6 +52,7 @@ module Paperclip
     # +only_process+ - style args to be run through the post-processor. This defaults to the empty list
     # +default_url+ - a URL for the missing image
     # +default_style+ - the style to use when an argument is not specified e.g. #url, #path
+    # +original_style+ - the name used for the 'original' style. Defaults to :original
     # +storage+ - the storage mechanism. Defaults to :filesystem
     # +use_timestamp+ - whether to append an anti-caching timestamp to image URLs. Defaults to true
     # +whiny+, +whiny_thumbnails+ - whether to raise when thumbnailing fails
@@ -82,6 +84,8 @@ module Paperclip
       @url_generator         = options[:url_generator].new(self, @options)
       @source_file_options   = options[:source_file_options]
       @whiny                 = options[:whiny]
+      @original_style        = options[:original_style]
+      @default_style         = all_styles.include?(options[:default_style]) ? options[:default_style] : @original_style 
 
       initialize_storage
     end
@@ -101,7 +105,7 @@ module Paperclip
       self.clear(*only_process)
       return nil if file.nil?
 
-      @queued_for_write[:original]   = file
+      @queued_for_write[original_style]   = file
       instance_write(:file_name,       cleanup_filename(file.original_filename))
       instance_write(:content_type,    file.content_type.to_s.strip)
       instance_write(:file_size,       file.size)
@@ -114,8 +118,8 @@ module Paperclip
       post_process(*only_process) if post_processing
 
       # Reset the file size if the original file was reprocessed.
-      instance_write(:file_size,   @queued_for_write[:original].size)
-      instance_write(:fingerprint, @queued_for_write[:original].fingerprint) if instance_respond_to?(:fingerprint)
+      instance_write(:file_size,   @queued_for_write[original_style].size)
+      instance_write(:fingerprint, @queued_for_write[original_style].fingerprint) if instance_respond_to?(:fingerprint)
       updater = :"#{name}_file_name_will_change!"
       instance.send updater if instance.respond_to? updater
     end
@@ -187,10 +191,6 @@ module Paperclip
 
     def as_json(options = nil)
       to_s((options && options[:style]) || default_style)
-    end
-
-    def default_style
-      @options[:default_style]
     end
 
     def styles
@@ -276,7 +276,7 @@ module Paperclip
     # Returns the size of the file as originally assigned, and lives in the
     # <attachment>_file_size attribute of the model.
     def size
-      instance_read(:file_size) || (@queued_for_write[:original] && @queued_for_write[:original].size)
+      instance_read(:file_size) || (@queued_for_write[original_style] && @queued_for_write[original_style].size)
     end
 
     # Returns the fingerprint of the file, if one's defined. The fingerprint is
@@ -383,6 +383,10 @@ module Paperclip
 
     private
 
+    def all_styles
+      [original_style, *styles.keys].uniq
+    end
+
     def path_option
       @options[:path].respond_to?(:call) ? @options[:path].call(self) : @options[:path]
     end
@@ -437,7 +441,7 @@ module Paperclip
     end
 
     def post_process(*style_args) #:nodoc:
-      return if @queued_for_write[:original].nil?
+      return if @queued_for_write[original_style].nil?
 
       instance.run_paperclip_callbacks(:post_process) do
         instance.run_paperclip_callbacks(:"#{name}_post_process") do
@@ -449,8 +453,8 @@ module Paperclip
     end
 
     def post_process_styles(*style_args) #:nodoc:
-      post_process_style(:original, styles[:original]) if styles.include?(:original) && process_style?(:original, style_args)
-      styles.reject{ |name, style| name == :original }.each do |name, style|
+      post_process_style(original_style, styles[original_style]) if styles.include?(original_style) && process_style?(original_style, style_args)
+      styles.reject{ |name, style| name == original_style }.each do |name, style|
         post_process_style(name, style) if process_style?(name, style_args)
       end
     end
@@ -458,7 +462,7 @@ module Paperclip
     def post_process_style(name, style) #:nodoc:
       begin
         raise RuntimeError.new("Style #{name} has no processors defined.") if style.processors.blank?
-        @queued_for_write[name] = style.processors.inject(@queued_for_write[:original]) do |file, processor|
+        @queued_for_write[name] = style.processors.inject(@queued_for_write[original_style]) do |file, processor|
           Paperclip.processor(processor).make(file, style.processor_options, self)
         end
         unadapted_file = @queued_for_write[name]
@@ -488,7 +492,7 @@ module Paperclip
     def queue_all_for_delete #:nodoc:
       return if !file?
       unless @options[:preserve_files]
-        @queued_for_delete += [:original, *styles.keys].uniq.map do |style|
+        @queued_for_delete += all_styles.map do |style|
           path(style) if exists?(style)
         end.compact
       end

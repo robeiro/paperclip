@@ -3,7 +3,7 @@ module Paperclip
     def initialize(target)
       @target, @style = case target
       when Paperclip::Attachment
-        [target, :original]
+        [target, target.original_style]
       when Paperclip::Style
         [target.attachment, target.name]
       end
