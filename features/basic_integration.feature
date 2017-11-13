@@ -12,17 +12,35 @@ Feature: Rails integration
   Scenario: Configure defaults for all attachments through Railtie
     Given I add this snippet to config/application.rb:
       """
-      config.paperclip_defaults = {:url => "/paperclip/custom/:attachment/:style/:filename"}
+      config.paperclip_defaults = {
+        :url => "/paperclip/custom/:attachment/:style/:filename",
+        :validate_media_type => false
+      }
       """
     And I attach :attachment
     And I start the rails application
     When I go to the new user page
     And I fill in "Name" with "something"
-    And I attach the file "test/fixtures/5k.png" to "Attachment"
+    And I attach the file "spec/support/fixtures/animated.unknown" to "Attachment"
+    And I press "Submit"
+    Then I should see "Name: something"
+    And I should see an image with a path of "/paperclip/custom/attachments/original/animated.unknown"
+    And the file at "/paperclip/custom/attachments/original/animated.unknown" should be the same as "spec/support/fixtures/animated.unknown"
+
+  Scenario: Add custom processors
+    Given I add a "test" processor in "lib/paperclip"
+    And I add a "cool" processor in "lib/paperclip_processors"
+    And I attach :attachment with:
+      """
+      styles: { original: {} }, processors: [:test, :cool]
+      """
+    And I start the rails application
+    When I go to the new user page
+    And I fill in "Name" with "something"
+    And I attach the file "spec/support/fixtures/5k.png" to "Attachment"
     And I press "Submit"
     Then I should see "Name: something"
     And I should see an image with a path of "/paperclip/custom/attachments/original/5k.png"
-    And the file at "/paperclip/custom/attachments/original/5k.png" should be the same as "test/fixtures/5k.png"
 
   Scenario: Filesystem integration test
     Given I attach :attachment with:
@@ -32,11 +50,11 @@ Feature: Rails integration
     And I start the rails application
     When I go to the new user page
     And I fill in "Name" with "something"
-    And I attach the file "test/fixtures/5k.png" to "Attachment"
+    And I attach the file "spec/support/fixtures/5k.png" to "Attachment"
     And I press "Submit"
     Then I should see "Name: something"
     And I should see an image with a path of "/system/attachments/original/5k.png"
-    And the file at "/system/attachments/original/5k.png" should be the same as "test/fixtures/5k.png"
+    And the file at "/system/attachments/original/5k.png" should be the same as "spec/support/fixtures/5k.png"
 
   Scenario: S3 Integration test
     Given I attach :attachment with:
@@ -51,12 +69,13 @@ Feature: Rails integration
       bucket: paperclip
       access_key_id: access_key
       secret_access_key: secret_key
+      s3_region: us-west-2
       """
     And I start the rails application
     When I go to the new user page
     And I fill in "Name" with "something"
-    And I attach the file "test/fixtures/5k.png" to "Attachment" on S3
+    And I attach the file "spec/support/fixtures/5k.png" to "Attachment" on S3
     And I press "Submit"
     Then I should see "Name: something"
-    And I should see an image with a path of "http://s3.amazonaws.com/paperclip/attachments/original/5k.png"
-    And the file at "http://s3.amazonaws.com/paperclip/attachments/original/5k.png" should be uploaded to S3
+    And I should see an image with a path of "//s3.amazonaws.com/paperclip/attachments/original/5k.png"
+    And the file at "//s3.amazonaws.com/paperclip/attachments/original/5k.png" should be uploaded to S3

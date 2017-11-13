@@ -2,6 +2,7 @@
 require 'uri'
 require 'paperclip/url_generator'
 require 'active_support/deprecation'
+require 'active_support/core_ext/string/inflections'
 
 module Paperclip
   # The Attachment class manages the files for a given attachment. It saves
@@ -32,12 +33,14 @@ module Paperclip
         :use_default_time_zone => true,
         :use_timestamp         => true,
         :whiny                 => Paperclip.options[:whiny] || Paperclip.options[:whiny_thumbnails],
+        :validate_media_type   => true,
+        :adapter_options       => { hash_digest: Digest::MD5 },
         :check_validity_before_processing => true
       }
     end
 
-    attr_reader :name, :instance, :default_style, :original_style, :convert_options, :queued_for_write, :whiny,
-                :options, :interpolator, :source_file_options, :whiny
+    attr_reader :name, :instance, :default_style, :convert_options, :queued_for_write, :whiny,
+                :options, :original_style, :interpolator, :source_file_options
     attr_accessor :post_processing
 
     # Creates an Attachment object. +name+ is the name of the attachment,
@@ -49,7 +52,8 @@ module Paperclip
     # +url+ - a relative URL of the attachment. This is interpolated using +interpolator+
     # +path+ - where on the filesystem to store the attachment. This is interpolated using +interpolator+
     # +styles+ - a hash of options for processing the attachment. See +has_attached_file+ for the details
-    # +only_process+ - style args to be run through the post-processor. This defaults to the empty list
+    # +only_process+ - style args to be run through the post-processor. This defaults to the empty list (which is
+    #                  a special case that indicates all styles should be processed)
     # +default_url+ - a URL for the missing image
     # +default_style+ - the style to use when an argument is not specified e.g. #url, #path
     # +original_style+ - the name used for the 'original' style. Defaults to :original
@@ -69,7 +73,8 @@ module Paperclip
     # +url_generator+ - the object used to generate URLs, using the interpolator. Defaults to Paperclip::UrlGenerator
     # +escape_url+ - Perform URI escaping to URLs. Defaults to true
     def initialize(name, instance, options = {})
-      @name              = name
+      @name              = name.to_sym
+      @name_string       = name.to_s
       @instance          = instance
 
       options = self.class.default_options.deep_merge(options)
@@ -81,7 +86,7 @@ module Paperclip
       @errors                = {}
       @dirty                 = false
       @interpolator          = options[:interpolator]
-      @url_generator         = options[:url_generator].new(self, @options)
+      @url_generator         = options[:url_generator].new(self)
       @source_file_options   = options[:source_file_options]
       @whiny                 = options[:whiny]
       @original_style        = options[:original_style]
@@ -91,37 +96,30 @@ module Paperclip
     end
 
     # What gets called when you call instance.attachment = File. It clears
-    # errors, assigns attributes, and processes the file. It
-    # also queues up the previous file for deletion, to be flushed away on
-    # #save of its host.  In addition to form uploads, you can also assign
-    # another Paperclip attachment:
+    # errors, assigns attributes, and processes the file. It also queues up the
+    # previous file for deletion, to be flushed away on #save of its host.  In
+    # addition to form uploads, you can also assign another Paperclip
+    # attachment:
     #   new_user.avatar = old_user.avatar
-    def assign uploaded_file
+    def assign(uploaded_file)
+      @file = Paperclip.io_adapters.for(uploaded_file,
+                                        @options[:adapter_options])
       ensure_required_accessors!
       ensure_required_validations!
-      file = Paperclip.io_adapters.for(uploaded_file)
 
-      return nil if not file.assignment?
-      self.clear(*only_process)
-      return nil if file.nil?
+      if @file.assignment?
+        clear(*only_process)
 
-      @queued_for_write[original_style]   = file
-      instance_write(:file_name,       cleanup_filename(file.original_filename))
-      instance_write(:content_type,    file.content_type.to_s.strip)
-      instance_write(:file_size,       file.size)
-      instance_write(:fingerprint,     file.fingerprint) if instance_respond_to?(:fingerprint)
-      instance_write(:created_at,      Time.now) if has_enabled_but_unset_created_at?
-      instance_write(:updated_at,      Time.now)
-
-      @dirty = true
-
-      post_process(*only_process) if post_processing
-
-      # Reset the file size if the original file was reprocessed.
-      instance_write(:file_size,   @queued_for_write[original_style].size)
-      instance_write(:fingerprint, @queued_for_write[original_style].fingerprint) if instance_respond_to?(:fingerprint)
-      updater = :"#{name}_file_name_will_change!"
-      instance.send updater if instance.respond_to? updater
+        if @file.nil?
+          nil
+        else
+          assign_attributes
+          post_process_file
+          reset_file_if_original_reprocessed
+        end
+      else
+        nil
+      end
     end
 
     # Returns the public URL of the attachment with a given style. This does
@@ -146,14 +144,20 @@ module Paperclip
     #
     # +#new(Paperclip::Attachment, options_hash)+
     # +#for(style_name, options_hash)+
-    def url(style_name = default_style, options = {})
-      default_options = {:timestamp => @options[:use_timestamp], :escape => @options[:escape_url]}
 
+    def url(style_name = default_style, options = {})
       if options == true || options == false # Backwards compatibility.
         @url_generator.for(style_name, default_options.merge(:timestamp => options))
       else
         @url_generator.for(style_name, default_options.merge(options))
       end
+    end
+
+    def default_options
+      {
+        :timestamp => @options[:use_timestamp],
+        :escape => @options[:escape_url]
+      }
     end
 
     # Alias to +url+ that allows using the expiring_url method provided by the cloud
@@ -236,6 +240,10 @@ module Paperclip
     # the instance's errors and returns false, cancelling the save.
     def save
       flush_deletes unless @options[:keep_old_files]
+      process = only_process
+      if process.any? && !process.include?(original_style)
+        @queued_for_write.except!(original_style)
+      end
       flush_writes
       @dirty = false
       true
@@ -322,7 +330,7 @@ module Paperclip
       OpenSSL::HMAC.hexdigest(OpenSSL::Digest.const_get(@options[:hash_digest]).new, @options[:hash_secret], data)
     end
 
-    # This method really shouldn't be called that often. It's expected use is
+    # This method really shouldn't be called that often. Its expected use is
     # in the paperclip:refresh rake task and that's it. It will regenerate all
     # thumbnails forcefully, by reobtaining the original file and going through
     # the post-process again.
@@ -347,7 +355,7 @@ module Paperclip
 
     # Returns true if a file has been assigned.
     def file?
-      !original_filename.blank?
+      original_filename.present?
     end
 
     alias :present? :file?
@@ -366,7 +374,7 @@ module Paperclip
     # instance_write(:file_name, "me.jpg") will write "me.jpg" to the instance's
     # "avatar_file_name" field (assuming the attachment is called avatar).
     def instance_write(attr, value)
-      setter = :"#{name}_#{attr}="
+      setter = :"#{@name_string}_#{attr}="
       if instance.respond_to?(setter)
         instance.send(setter, value)
       end
@@ -375,7 +383,7 @@ module Paperclip
     # Reads the attachment-specific attribute on the instance. See instance_write
     # for more details.
     def instance_read(attr)
-      getter = :"#{name}_#{attr}"
+      getter = :"#{@name_string}_#{attr}"
       if instance.respond_to?(getter)
         instance.send(getter)
       end
@@ -395,16 +403,20 @@ module Paperclip
       @instance.class.validators.map(&:class)
     end
 
+    def missing_required_validator?
+      (active_validator_classes.flat_map(&:ancestors) & Paperclip::REQUIRED_VALIDATORS).empty?
+    end
+
     def ensure_required_validations!
-      if (active_validator_classes & Paperclip::REQUIRED_VALIDATORS).empty?
+      if missing_required_validator?
         raise Paperclip::Errors::MissingRequiredValidatorError
       end
     end
 
     def ensure_required_accessors! #:nodoc:
       %w(file_name).each do |field|
-        unless @instance.respond_to?("#{name}_#{field}") && @instance.respond_to?("#{name}_#{field}=")
-          raise Paperclip::Error.new("#{@instance.class} model missing required attr_accessor for '#{name}_#{field}'")
+        unless @instance.respond_to?("#{@name_string}_#{field}") && @instance.respond_to?("#{@name_string}_#{field}=")
+          raise Paperclip::Error.new("#{@instance.class} model missing required attr_accessor for '#{@name_string}_#{field}'")
         end
       end
     end
@@ -421,6 +433,61 @@ module Paperclip
         raise Errors::StorageMethodNotFound, "Cannot load storage module '#{storage_class_name}'"
       end
       self.extend(storage_module)
+    end
+
+    def assign_attributes
+      @queued_for_write[original_style] = @file
+      assign_file_information
+      assign_fingerprint { @file.fingerprint }
+      assign_timestamps
+    end
+
+    def assign_file_information
+      instance_write(:file_name, cleanup_filename(@file.original_filename))
+      instance_write(:content_type, @file.content_type.to_s.strip)
+      instance_write(:file_size, @file.size)
+    end
+
+    def assign_fingerprint
+      if instance_respond_to?(:fingerprint)
+        instance_write(:fingerprint, yield)
+      end
+    end
+
+    def assign_timestamps
+      if has_enabled_but_unset_created_at?
+        instance_write(:created_at, Time.now)
+      end
+
+      instance_write(:updated_at, Time.now)
+    end
+
+    def post_process_file
+      dirty!
+
+      if post_processing
+        post_process(*only_process)
+      end
+    end
+
+    def dirty!
+      @dirty = true
+    end
+
+    def reset_file_if_original_reprocessed
+      instance_write(:file_size, @queued_for_write[original_style].size)
+      assign_fingerprint { @queued_for_write[original_style].fingerprint }
+      reset_updater
+    end
+
+    def reset_updater
+      if instance.respond_to?(updater)
+        instance.send(updater)
+      end
+    end
+
+    def updater
+      :"#{name}_file_name_will_change!"
     end
 
     def extra_options_for(style) #:nodoc:
@@ -445,7 +512,7 @@ module Paperclip
 
       instance.run_paperclip_callbacks(:post_process) do
         instance.run_paperclip_callbacks(:"#{name}_post_process") do
-          unless @options[:check_validity_before_processing] && instance.errors.any?
+          if !@options[:check_validity_before_processing] || !instance.errors.any?
             post_process_styles(*style_args)
           end
         end
@@ -462,16 +529,26 @@ module Paperclip
     def post_process_style(name, style) #:nodoc:
       begin
         raise RuntimeError.new("Style #{name} has no processors defined.") if style.processors.blank?
-        @queued_for_write[name] = style.processors.inject(@queued_for_write[original_style]) do |file, processor|
-          Paperclip.processor(processor).make(file, style.processor_options, self)
+        intermediate_files = []
+        original = @queued_for_write[original_style]
+
+        @queued_for_write[name] = style.processors.
+          reduce(original) do |file, processor|
+          file = Paperclip.processor(processor).make(file, style.processor_options, self)
+          intermediate_files << file unless file == @queued_for_write[original_style]
+          file
         end
+
         unadapted_file = @queued_for_write[name]
-        @queued_for_write[name] = Paperclip.io_adapters.for(@queued_for_write[name])
+        @queued_for_write[name] = Paperclip.io_adapters.
+          for(@queued_for_write[name], @options[:adapter_options])
         unadapted_file.close if unadapted_file.respond_to?(:close)
         @queued_for_write[name]
-      rescue Paperclip::Error => e
+      rescue Paperclip::Errors::NotIdentifiedByImageMagickError => e
         log("An error was received while processing: #{e.inspect}")
         (@errors[:processing] ||= []) << e.message if @options[:whiny]
+      ensure
+        unlink_files(intermediate_files)
       end
     end
 
@@ -512,7 +589,11 @@ module Paperclip
 
     # called by storage after the writes are flushed and before @queued_for_write is cleared
     def after_flush_writes
-      @queued_for_write.each do |style, file|
+      unlink_files(@queued_for_write.values)
+    end
+
+    def unlink_files(files)
+      Array(files).each do |file|
         file.close unless file.closed?
         file.unlink if file.respond_to?(:unlink) && file.path.present? && File.exist?(file.path)
       end
@@ -520,7 +601,7 @@ module Paperclip
 
     # You can either specifiy :restricted_characters or you can define your own
     # :filename_cleaner object. This object needs to respond to #call and takes
-    # the filename that will be cleaned. It should return the cleaned filenme.
+    # the filename that will be cleaned. It should return the cleaned filename.
     def filename_cleaner
       @options[:filename_cleaner] || FilenameCleaner.new(@options[:restricted_characters])
     end

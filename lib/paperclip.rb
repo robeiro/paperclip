@@ -33,6 +33,7 @@ require 'paperclip/geometry_parser_factory'
 require 'paperclip/geometry_detector_factory'
 require 'paperclip/geometry'
 require 'paperclip/processor'
+require 'paperclip/processor_helpers'
 require 'paperclip/tempfile'
 require 'paperclip/thumbnail'
 require 'paperclip/interpolations/plural_cache'
@@ -54,11 +55,21 @@ require 'paperclip/helpers'
 require 'paperclip/has_attached_file'
 require 'paperclip/attachment_registry'
 require 'paperclip/filename_cleaner'
-require 'mime/types'
+require 'paperclip/rails_environment'
+
+begin
+  # Use mime/types/columnar if available, for reduced memory usage
+  require "mime/types/columnar"
+rescue LoadError
+  require "mime/types"
+end
+
+require 'mimemagic'
+require 'mimemagic/overlay'
 require 'logger'
 require 'cocaine'
 
-require 'paperclip/railtie' if defined?(Rails)
+require 'paperclip/railtie' if defined?(Rails::Railtie)
 
 # The base module that gets included in ActiveRecord::Base. See the
 # documentation for Paperclip::ClassMethods for more useful information.
@@ -75,15 +86,18 @@ module Paperclip
   # * command_path: Defines the path at which to find the command line
   #   programs if they are not visible to Rails the system's search path. Defaults to
   #   nil, which uses the first executable found in the user's search path.
+  # * use_exif_orientation: Whether to inspect EXIF data to determine an
+  #   image's orientation. Defaults to true.
   def self.options
     @options ||= {
-      :whiny => true,
-      :image_magick_path => nil,
-      :command_path => nil,
-      :log => true,
-      :log_command => true,
-      :swallow_stderr => true,
-      :content_type_mappings => {}
+      command_path: nil,
+      content_type_mappings: {},
+      log: true,
+      log_command: true,
+      read_timeout: nil,
+      swallow_stderr: true,
+      use_exif_orientation: true,
+      whiny: true,
     }
   end
 
@@ -105,7 +119,7 @@ module Paperclip
     # called on it, the attachment will *not* be deleted until +save+ is called. See the
     # Paperclip::Attachment documentation for more specifics. There are a number of options
     # you can set to change the behavior of a Paperclip attachment:
-    # * +url+: The full URL of where the attachment is publically accessible. This can just
+    # * +url+: The full URL of where the attachment is publicly accessible. This can just
     #   as easily point to a directory served directly through Apache as it can to an action
     #   that can control permissions. You can specify the full domain and path, but usually
     #   just an absolute path is sufficient. The leading slash *must* be included manually for
@@ -114,6 +128,9 @@ module Paperclip
     #   Paperclip::Attachment#interpolate for more information on variable interpolaton.
     #     :url => "/:class/:attachment/:id/:style_:filename"
     #     :url => "http://some.other.host/stuff/:class/:id_:extension"
+    #   Note: When using the +s3+ storage option, the +url+ option expects
+    #   particular values. See the Paperclip::Storage::S3#url documentation for
+    #   specifics.
     # * +default_url+: The URL that will be returned if there is no attachment assigned.
     #   This field is interpolated just as the url is. The default value is
     #   "/:attachment/:style/missing.png"
@@ -132,7 +149,7 @@ module Paperclip
     #     user.avatar.url # => "/avatars/23/normal_me.png"
     # * +keep_old_files+: Keep the existing attachment files (original + resized) from
     #   being automatically deleted when an attachment is cleared or updated. Defaults to +false+.
-    # * +preserve_files+: Keep the existing attachment files in all cases, even if the parent 
+    # * +preserve_files+: Keep the existing attachment files in all cases, even if the parent
     #   record is destroyed. Defaults to +false+.
     # * +whiny+: Will raise an error if Paperclip cannot post_process an uploaded file due
     #   to a command line error. This will override the global setting for this attachment.

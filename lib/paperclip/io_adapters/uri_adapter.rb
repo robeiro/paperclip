@@ -2,30 +2,51 @@ require 'open-uri'
 
 module Paperclip
   class UriAdapter < AbstractAdapter
-    def initialize(target)
-      @target = target
+    attr_writer :content_type
+
+    def initialize(target, options = {})
+      super
       @content = download_content
       cache_current_values
       @tempfile = copy_to_tempfile(@content)
     end
 
-    attr_writer :content_type
-
     private
 
-    def download_content
-      open(@target)
+    def cache_current_values
+      self.content_type = content_type_from_content || "text/html"
+
+      self.original_filename = filename_from_content_disposition ||
+                               filename_from_path || default_filename
+      @size = @content.size
     end
 
-    def cache_current_values
-      @original_filename = @target.path.split("/").last
-      @original_filename ||= "index.html"
-      self.original_filename = @original_filename.strip
+    def content_type_from_content
+      if @content.respond_to?(:content_type)
+        @content.content_type
+      end
+    end
 
-      @content_type = @content.content_type if @content.respond_to?(:content_type)
-      @content_type ||= "text/html"
+    def filename_from_content_disposition
+      if @content.meta.has_key?("content-disposition")
+        matches = @content.meta["content-disposition"].
+          match(/filename="([^"]*)"/)
+        matches[1] if matches
+      end
+    end
 
-      @size = @content.size
+    def filename_from_path
+      @target.path.split("/").last
+    end
+
+    def default_filename
+      "index.html"
+    end
+
+    def download_content
+      options = { read_timeout: Paperclip.options[:read_timeout] }.compact
+
+      open(@target, **options)
     end
 
     def copy_to_tempfile(src)
