@@ -1,5 +1,5 @@
-require 'spec_helper'
-require 'aws-sdk'
+require "spec_helper"
+require "aws-sdk-s3"
 
 describe Paperclip::Storage::S3 do
   before do
@@ -237,7 +237,7 @@ describe Paperclip::Storage::S3 do
     end
   end
 
-  # if using aws-sdk-v2, the s3_host_name will be defined by the s3_region
+  # the s3_host_name will be defined by the s3_region
   context "s3_host_name" do
     before do
       rebuild_model storage: :s3,
@@ -256,7 +256,7 @@ describe Paperclip::Storage::S3 do
     end
 
     it "uses the S3 bucket with the correct host name" do
-      assert_equal "s3-ap-northeast-1.amazonaws.com",
+      assert_equal "s3.ap-northeast-1.amazonaws.com",
         @dummy.avatar.s3_bucket.client.config.endpoint.host
     end
   end
@@ -282,7 +282,7 @@ describe Paperclip::Storage::S3 do
     end
   end
 
-  context "use_accelerate_endpoint", if: aws_accelerate_available? do
+  context "use_accelerate_endpoint" do
     context "defaults to false" do
       before do
         rebuild_model(
@@ -308,7 +308,7 @@ describe Paperclip::Storage::S3 do
       end
     end
 
-    context "set to true", if: aws_accelerate_available? do
+    context "set to true" do
       before do
         rebuild_model(
           storage: :s3,
@@ -793,7 +793,7 @@ describe Paperclip::Storage::S3 do
     end
   end
 
-  # for aws-sdk-v2 the bucket.name is determined by the :s3_region
+  # the bucket.name is determined by the :s3_region
   context "Parsing S3 credentials with a s3_host_name in them" do
     before do
       rebuild_model storage: :s3,
@@ -821,8 +821,9 @@ describe Paperclip::Storage::S3 do
 
     it "gets the right s3_host_name in development" do
       rails_env("development") do
-        assert_match %r{^s3-ap-northeast-1.amazonaws.com}, @dummy.avatar.s3_host_name
-        assert_match %r{^s3-ap-northeast-1.amazonaws.com},
+        assert_match %r{^s3.ap-northeast-1.amazonaws.com},
+          @dummy.avatar.s3_host_name
+        assert_match %r{^s3.ap-northeast-1.amazonaws.com},
           @dummy.avatar.s3_bucket.client.config.endpoint.host
       end
     end

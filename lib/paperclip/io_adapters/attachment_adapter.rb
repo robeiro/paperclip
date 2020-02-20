@@ -1,5 +1,11 @@
 module Paperclip
   class AttachmentAdapter < AbstractAdapter
+    def self.register
+      Paperclip.io_adapters.register self do |target|
+        Paperclip::Attachment === target || Paperclip::Style === target
+      end
+    end
+
     def initialize(target, options = {})
       super
       @target, @style = case target
@@ -25,13 +31,17 @@ module Paperclip
       if source.staged?
         link_or_copy_file(source.staged_path(@style), destination.path)
       else
-        source.copy_to_local_file(@style, destination.path)
+        begin
+          source.copy_to_local_file(@style, destination.path)
+        rescue Errno::EACCES
+          # clean up lingering tempfile if we cannot access source file
+          destination.close(true)
+          raise
+        end
       end
       destination
     end
   end
 end
 
-Paperclip.io_adapters.register Paperclip::AttachmentAdapter do |target|
-  Paperclip::Attachment === target || Paperclip::Style === target
-end
+Paperclip::AttachmentAdapter.register

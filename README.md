@@ -1,6 +1,31 @@
 Paperclip
 =========
 
+# Deprecated
+
+**[Paperclip is deprecated]**.
+
+For new projects, we recommend Rails' own [ActiveStorage].
+
+For existing projects, please consult and contribute to the migration guide,
+available [in English], [en español], and as [a video] recorded at RailsConf
+2019.
+
+
+We will leave the Issues open as a discussion forum _only_. We do _not_
+guarantee a response from us in the Issues.
+
+We are no longer accepting pull requests _except_ pull requests against the
+migration guide. All other pull requests will be closed without merging.
+
+[Paperclip is deprecated]: https://robots.thoughtbot.com/closing-the-trombone
+[ActiveStorage]: http://guides.rubyonrails.org/active_storage_overview.html
+[in English]: https://github.com/thoughtbot/paperclip/blob/master/MIGRATING.md
+[en español]: https://github.com/thoughtbot/paperclip/blob/master/MIGRATING-ES.md
+[a video]: https://www.youtube.com/watch?v=tZ_WNUytO9o
+
+# Existing documentation
+
 ## Documentation valid for `master` branch
 
 Please check the documentation for the paperclip version you are using:
@@ -16,7 +41,6 @@ https://github.com/thoughtbot/paperclip/releases
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-
 
 - [Requirements](#requirements)
   - [Ruby and Rails](#ruby-and-rails)
@@ -43,6 +67,7 @@ https://github.com/thoughtbot/paperclip/releases
   - [Vintage Syntax](#vintage-syntax)
 - [Storage](#storage)
   - [Understanding Storage](#understanding-storage)
+- [IO Adapters](#io-adapters)
 - [Post Processing](#post-processing)
 - [Custom Attachment Processors](#custom-attachment-processors)
 - [Events](#events)
@@ -87,7 +112,7 @@ Requirements
 ### Ruby and Rails
 
 Paperclip now requires Ruby version **>= 2.1** and Rails version **>= 4.2**
-(only if you're going to use Paperclip with Ruby on Rails.)
+(only if you're going to use Paperclip with Ruby on Rails).
 
 ### Image Processor
 
@@ -105,7 +130,7 @@ In development mode, you might add this line to `config/environments/development
 Paperclip.options[:command_path] = "/usr/local/bin/"
 ```
 
-If you're on Mac OS X, you'll want to run the following with [Homebrew] (http://www.brew.sh):
+If you're on Mac OS X, you'll want to run the following with [Homebrew](http://www.brew.sh):
 
     brew install imagemagick
 
@@ -167,7 +192,7 @@ Paperclip is distributed as a gem, which is how it should be used in your app.
 Include the gem in your Gemfile:
 
 ```ruby
-gem "paperclip", "~> 5.0.0"
+gem "paperclip", "~> 6.0.0"
 ```
 
 Or, if you want to get the latest, you can get master from the main paperclip repository:
@@ -206,6 +231,8 @@ end
 
 ### Migrations
 
+
+Assuming you have a `users` table, add an `avatar` column to the `users` table:
 ```ruby
 class AddAvatarColumnsToUsers < ActiveRecord::Migration
   def up
@@ -221,10 +248,11 @@ end
 (Or you can use the Rails migration generator: `rails generate paperclip user avatar`)
 
 ### Edit and New Views
-
+Make sure you have corresponding methods in your controller:
 ```erb
 <%= form_for @user, url: users_path, html: { multipart: true } do |form| %>
   <%= form.file_field :avatar %>
+  <%= form.submit %>
 <% end %>
 ```
 
@@ -233,6 +261,7 @@ end
 ```erb
 <%= simple_form_for @user, url: users_path do |form| %>
   <%= form.input :avatar, as: :file %>
+  <%= form.submit %>
 <% end %>
 ```
 
@@ -240,7 +269,7 @@ end
 
 ```ruby
 def create
-  @user = User.create( user_params )
+  @user = User.create(user_params)
 end
 
 private
@@ -254,7 +283,7 @@ end
 ```
 
 ### View Helpers
-
+Add these to the view where you want your images displayed:
 ```erb
 <%= image_tag @user.avatar.url %>
 <%= image_tag @user.avatar.url(:medium) %>
@@ -337,7 +366,7 @@ Lastly, you can also define multiple validations on a single attachment using `v
 
 ```ruby
 validates_attachment :avatar, presence: true,
-  content_type: { content_type: "image/jpeg" },
+  content_type: "image/jpeg",
   size: { in: 0..10.kilobytes }
 ```
 
@@ -347,7 +376,7 @@ called with valid attachments._
 
 ```ruby
 class Message < ActiveRecord::Base
-  has_attached_file :asset, styles: {thumb: "100x100#"}
+  has_attached_file :asset, styles: { thumb: "100x100#" }
 
   before_post_process :skip_for_audio
 
@@ -363,8 +392,8 @@ afterwards, then assign manually:
 
 ```ruby
 class Book < ActiveRecord::Base
-  has_attached_file :document, styles: {thumbnail: "60x60#"}
-  validates_attachment :document, content_type: { content_type: "application/pdf" }
+  has_attached_file :document, styles: { thumbnail: "60x60#" }
+  validates_attachment :document, content_type: "application/pdf"
   validates_something_else # Other validations that conflict with Paperclip's
 end
 
@@ -396,7 +425,7 @@ image-y ones:
 
 ```ruby
 validates_attachment :avatar,
-  content_type: { content_type: ["image/jpeg", "image/gif", "image/png"] }
+  content_type: ["image/jpeg", "image/gif", "image/png"]
 ```
 
 `Paperclip::ContentTypeDetector` will attempt to match a file's extension to an
@@ -563,7 +592,7 @@ Storage
 Paperclip ships with 3 storage adapters:
 
 * File Storage
-* S3 Storage (via `aws-sdk`)
+* S3 Storage (via `aws-sdk-s3`)
 * Fog Storage
 
 If you would like to use Paperclip with another storage, you can install these
@@ -589,10 +618,10 @@ _**NOTE**: This is a change from previous versions of Paperclip, but is overall 
 safer choice for the default file store._
 
 You may also choose to store your files using Amazon's S3 service. To do so, include
-the `aws-sdk` gem in your Gemfile:
+the `aws-sdk-s3` gem in your Gemfile:
 
 ```ruby
-gem 'aws-sdk', '~> 2.3.0'
+gem 'aws-sdk-s3'
 ```
 
 And then you can specify using S3 from `has_attached_file`.
@@ -605,6 +634,34 @@ possible to place your files in a different location. You will need to change
 both the `:path` and `:url` options in order to make sure the files are unavailable
 to the public. Both `:path` and `:url` allow the same set of interpolated
 variables.
+
+---
+
+IO Adapters
+-----------
+
+When a file is uploaded or attached, it can be in one of a few different input
+forms, from Rails' UploadedFile object to a StringIO to a Tempfile or even a
+simple String that is a URL that points to an image.
+
+Paperclip will accept, by default, many of these sources. It also is capable of
+handling even more with a little configuration. The IO Adapters that handle
+images from non-local sources are not enabled by default. They can be enabled by
+adding a line similar to the following into `config/initializers/paperclip.rb`:
+
+```ruby
+Paperclip::DataUriAdapter.register
+```
+
+It's best to only enable a remote-loading adapter if you need it. Otherwise
+there's a chance that someone can gain insight into your internal network
+structure using it as a vector.
+
+The following adapters are *not* loaded by default:
+
+* `Paperclip::UriAdapter` - which accepts a `URI` instance.
+* `Paperclip::HttpUrlProxyAdapter` - which accepts a `http` string.
+* `Paperclip::DataUriAdapter` - which accepts a Base64-encoded `data:` string.
 
 ---
 
@@ -627,6 +684,14 @@ of what was uploaded. If the format is not specified, it is kept the same (e.g.
 JPGs will remain JPGs). `Paperclip::Thumbnail` uses ImageMagick to process
 images; [ImageMagick's geometry documentation](http://www.imagemagick.org/script/command-line-processing.php#geometry)
 has more information on the accepted style formats.
+
+For more fine-grained control of the conversion process, `source_file_options` and `convert_options` can be used to pass flags and settings directly to ImageMagick's powerful Convert tool, [documented here](https://www.imagemagick.org/script/convert.php). For example:
+
+```ruby
+has_attached_file :image, styles: { regular: ['800x800>', :png]}, 
+    source_file_options: { regular: "-density 96 -depth 8 -quality 85" },
+    convert_options: { regular: "-posterize 3"}
+```
 
 ImageMagick supports a number of environment variables for controlling its resource limits. For example, you can enforce memory or execution time limits by setting the following variables in your application's process environment:
 
@@ -710,7 +775,7 @@ called with valid attachments._
 
 ```ruby
 class Message < ActiveRecord::Base
-  has_attached_file :asset, styles: {thumb: "100x100#"}
+  has_attached_file :asset, styles: { thumb: "100x100#" }
 
   before_post_process :skip_for_audio
 
@@ -955,7 +1020,7 @@ similar mechanism for whichever parallel testing library you use.
 
 **Integration Tests**
 
-Using integration tests with FactoryGirl may save multiple copies of
+Using integration tests with FactoryBot may save multiple copies of
 your test files within the app. To avoid this, specify a custom path in
 the `config/environments/test.rb` like so:
 
@@ -972,11 +1037,11 @@ config.after(:suite) do
 end
 ```
 
-**Example of test configuration with Factory Girl**
+**Example of test configuration with Factory Bot**
 
 
 ```ruby
-FactoryGirl.define do
+FactoryBot.define do
   factory :user do
     avatar { File.new("#{Rails.root}/spec/support/fixtures/image.jpg") }
   end

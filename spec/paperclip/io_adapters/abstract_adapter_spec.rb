@@ -93,9 +93,68 @@ describe Paperclip::AbstractAdapter do
     end
   end
 
+  context "#copy_to_tempfile" do
+    around do |example|
+      FileUtils.module_eval do
+        class << self
+          alias paperclip_ln ln
+
+          def ln(*)
+            raise Errno::EXDEV
+          end
+        end
+      end
+
+      example.run
+
+      FileUtils.module_eval do
+        class << self
+          alias ln paperclip_ln
+          undef paperclip_ln
+        end
+      end
+    end
+
+    it "should return a readable file even when linking fails" do
+      src = open(fixture_file("5k.png"), "rb")
+      expect(subject.send(:copy_to_tempfile, src).read).to eq src.read
+    end
+  end
+
   context "#original_filename=" do
     it "should not fail with a nil original filename" do
       expect { subject.original_filename = nil }.not_to raise_error
+    end
+  end
+
+  context "#link_or_copy_file" do
+    class TestLinkOrCopyAdapter < Paperclip::AbstractAdapter
+      public :copy_to_tempfile, :destination
+    end
+
+    subject { TestLinkOrCopyAdapter.new(nil) }
+    let(:body) { "body" }
+
+    let(:file) do
+      t = Tempfile.new("destination")
+      t.print(body)
+      t.rewind
+      t
+    end
+
+    after do
+      file.close
+      file.unlink
+    end
+
+    it "should be able to read the file" do
+      expect(subject.copy_to_tempfile(file).read).to eq(body)
+    end
+
+    it "should be able to reopen the file after symlink has failed" do
+      FileUtils.expects(:ln).raises(Errno::EXDEV)
+
+      expect(subject.copy_to_tempfile(file).read).to eq(body)
     end
   end
 end
