@@ -67,7 +67,7 @@ end
 require 'mimemagic'
 require 'mimemagic/overlay'
 require 'logger'
-require 'cocaine'
+require 'terrapin'
 
 require 'paperclip/railtie' if defined?(Rails::Railtie)
 
@@ -98,6 +98,7 @@ module Paperclip
       swallow_stderr: true,
       use_exif_orientation: true,
       whiny: true,
+      is_windows: Gem.win_platform?
     }
   end
 
