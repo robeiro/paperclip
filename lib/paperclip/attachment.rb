@@ -526,6 +526,7 @@ module Paperclip
 
     def post_process_styles(*style_args) #:nodoc:
       post_process_style(original_style, styles[original_style]) if styles.include?(original_style) && process_style?(original_style, style_args)
+      Paperclip.log("Styles to be processed: #{styles.keys.join(', ')}")
       styles.reject{ |name, style| name == original_style }.each do |name, style|
         post_process_style(name, style) if process_style?(name, style_args)
       end
@@ -547,12 +548,13 @@ module Paperclip
           end
           file
         end
-
+        Paperclip.log("Intermediate file for #{name} ok")
         unadapted_file = @queued_for_write[name]
         @queued_for_write[name] = Paperclip.io_adapters.
           for(@queued_for_write[name], @options[:adapter_options])
         unadapted_file.close if unadapted_file.respond_to?(:close)
         @queued_for_write[name]
+        Paperclip.log("File for #{name} ok")
       rescue Paperclip::Errors::NotIdentifiedByImageMagickError => e
         log("An error was received while processing: #{e.inspect}")
         (@errors[:processing] ||= []) << e.message if @options[:whiny]
