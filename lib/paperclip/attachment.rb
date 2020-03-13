@@ -89,7 +89,6 @@ module Paperclip
       @source_file_options   = options[:source_file_options]
       @whiny                 = options[:whiny]
       @original_style        = options[:original_style]
-      @default_style         = all_styles.include?(options[:default_style]) ? options[:default_style] : @original_style
 
       initialize_storage
     end
@@ -194,6 +193,10 @@ module Paperclip
 
     def as_json(options = nil)
       to_s((options && options[:style]) || default_style)
+    end
+
+    def default_style
+      all_styles.include?(options[:default_style]) ? options[:default_style] : @original_style
     end
 
     def styles
