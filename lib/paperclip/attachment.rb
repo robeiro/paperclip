@@ -197,19 +197,18 @@ module Paperclip
     end
 
     def styles
-      Paperclip.log("read-styles: origin:#{@options[:styles].keys.join(',')} cache:#{@normalized_styles&.keys}")
+      Paperclip.log("READ-STYLES: origin:(#{@options[:styles].keys.join(',')}) cache:(#{@normalized_styles&.keys&.join(",")})")
       if @options[:styles].respond_to?(:call) || @normalized_styles.nil?
         styles = @options[:styles]
         styles = styles.call(self) if styles.respond_to?(:call)
 
         @normalized_styles = styles.dup
         styles.each_pair do |name, options|
-          Paperclip.log("adding-to-cache: #{name}:#{options}")
           @normalized_styles[name.to_sym] = Paperclip::Style.new(name.to_sym, options.dup, self)
-          Paperclip.log("added-to-cache: #{@normalized_styles[name.to_sym]}")
+          Paperclip.log("ADD-CACHE: (#{name.to_sym}:#{@normalized_styles[name.to_sym].geometry})")
         end
       end
-      Paperclip.log("read-styles: cache:#{@normalized_styles.keys}")
+      Paperclip.log("CACHE:(#{@normalized_styles.keys.join(',')})")
       @normalized_styles
     end
 
