@@ -197,15 +197,19 @@ module Paperclip
     end
 
     def styles
+      Paperclip.log("read-styles: origin:#{@options[:styles].keys.join(',')} cache:#{@normalized_styles.keys}")
       if @options[:styles].respond_to?(:call) || @normalized_styles.nil?
         styles = @options[:styles]
         styles = styles.call(self) if styles.respond_to?(:call)
 
         @normalized_styles = styles.dup
         styles.each_pair do |name, options|
+          Paperclip.log("adding-to-cache: #{name}:#{options}")
           @normalized_styles[name.to_sym] = Paperclip::Style.new(name.to_sym, options.dup, self)
+          Paperclip.log("added-to-cache: #{@normalized_styles[name.to_sym]}")
         end
       end
+      Paperclip.log("read-styles: cache:#{@normalized_styles.keys}")
       @normalized_styles
     end
 
@@ -548,13 +552,11 @@ module Paperclip
           end
           file
         end
-        Paperclip.log("Intermediate file for #{name} ok")
         unadapted_file = @queued_for_write[name]
         @queued_for_write[name] = Paperclip.io_adapters.
           for(@queued_for_write[name], @options[:adapter_options])
         unadapted_file.close if unadapted_file.respond_to?(:close)
         @queued_for_write[name]
-        Paperclip.log("File for #{name} ok")
       rescue Paperclip::Errors::NotIdentifiedByImageMagickError => e
         log("An error was received while processing: #{e.inspect}")
         (@errors[:processing] ||= []) << e.message if @options[:whiny]
@@ -571,8 +573,8 @@ module Paperclip
       interpolator.interpolate(pattern, self, style_name)
     end
 
-    def queue_some_for_delete(*styles)
-      @queued_for_delete += styles.uniq.map do |style|
+    def queue_some_for_delete(*del_styles)
+      @queued_for_delete += del_styles.uniq.map do |style|
         path(style) if exists?(style)
       end.compact
     end

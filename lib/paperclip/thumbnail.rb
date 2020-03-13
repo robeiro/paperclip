@@ -79,14 +79,11 @@ module Paperclip
         parameters = parameters.flatten.compact.join(" ").strip.squeeze(" ")
 
         frame = animated? ? "" : "[#{@frame_index}]"
-        output = convert(
+        convert(
           parameters,
           source: "#{File.expand_path(src.path)}#{frame}",
           dest: File.expand_path(dst.path),
         )
-        if @whiny
-          Paperclip.log("convert output: #{output}")
-        end
       rescue Terrapin::ExitStatusError => e
         if @whiny
           message = "There was an error processing the thumbnail for #{@basename}:\n" + e.message
