@@ -206,10 +206,12 @@ module Paperclip
         styles = styles.call(self) if styles.respond_to?(:call)
 
         @normalized_styles = styles.dup
+        logstr = []
         styles.each_pair do |name, options|
           @normalized_styles[name.to_sym] = Paperclip::Style.new(name.to_sym, options.dup, self)
-          Paperclip.log("ADD-CACHE: (#{name.to_sym}:#{@normalized_styles[name.to_sym].geometry})")
+          logstr << "#{name.to_sym}:#{@normalized_styles[name.to_sym].geometry}"
         end
+        Paperclip.log("ADD-CACHE: (#{logstr.join(',')})")
       end
       Paperclip.log("CACHE:(#{@normalized_styles.keys.join(',')})")
       @normalized_styles
