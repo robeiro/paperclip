@@ -197,7 +197,7 @@ module Paperclip
     end
 
     def styles
-      Paperclip.log("read-styles: origin:#{@options[:styles].keys.join(',')} cache:#{@normalized_styles.keys}")
+      Paperclip.log("read-styles: origin:#{@options[:styles].keys.join(',')} cache:#{@normalized_styles&.keys}")
       if @options[:styles].respond_to?(:call) || @normalized_styles.nil?
         styles = @options[:styles]
         styles = styles.call(self) if styles.respond_to?(:call)
