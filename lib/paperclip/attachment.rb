@@ -200,20 +200,15 @@ module Paperclip
     end
 
     def styles
-      Paperclip.log("READ-STYLES: origin:(#{@options[:styles].keys.join(',')}) cache:(#{@normalized_styles&.keys&.join(",")})")
       if @options[:styles].respond_to?(:call) || @normalized_styles.nil?
         styles = @options[:styles]
         styles = styles.call(self) if styles.respond_to?(:call)
 
         @normalized_styles = styles.dup
-        logstr = []
         styles.each_pair do |name, options|
           @normalized_styles[name.to_sym] = Paperclip::Style.new(name.to_sym, options.dup, self)
-          logstr << "#{name.to_sym}:#{@normalized_styles[name.to_sym].geometry}"
         end
-        Paperclip.log("ADD-CACHE: (#{logstr.join(',')})")
       end
-      Paperclip.log("CACHE:(#{@normalized_styles.keys.join(',')})")
       @normalized_styles
     end
 
@@ -534,7 +529,6 @@ module Paperclip
 
     def post_process_styles(*style_args) #:nodoc:
       post_process_style(original_style, styles[original_style]) if styles.include?(original_style) && process_style?(original_style, style_args)
-      Paperclip.log("Styles to be processed: #{styles.keys.join(', ')}")
       styles.reject{ |name, style| name == original_style }.each do |name, style|
         post_process_style(name, style) if process_style?(name, style_args)
       end
